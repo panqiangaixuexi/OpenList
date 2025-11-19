@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	stdpath "path"
 	"strings"
 	"sync"
@@ -667,8 +668,16 @@ func (d *Github) Put(ctx context.Context, dstDir model.Obj, stream model.FileStr
 var _ driver.Driver = (*Github)(nil)
 
 func (d *Github) getContentApiUrl(path string) string {
-	path = utils.FixAndCleanPath(path)
-	return fmt.Sprintf("https://api.github.com/repos/%s/%s/contents%s", d.Owner, d.Repo, path)
+	p := utils.FixAndCleanPath(path)
+	if p == "/" || p == "" {
+		return fmt.Sprintf("https://api.github.com/repos/%s/%s/contents", d.Owner, d.Repo)
+	}
+	parts := strings.Split(strings.Trim(p, "/"), "/")
+	for i := range parts {
+		parts[i] = url.PathEscape(parts[i])
+	}
+	encoded := "/" + strings.Join(parts, "/")
+	return fmt.Sprintf("https://api.github.com/repos/%s/%s/contents%s", d.Owner, d.Repo, encoded)
 }
 
 func (d *Github) get(path string) (*Object, error) {
@@ -973,3 +982,4 @@ func (d *Github) addCommitterAndAuthor(m *map[string]interface{}) {
 		(*m)["author"] = author
 	}
 }
+
