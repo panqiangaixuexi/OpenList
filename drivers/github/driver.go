@@ -694,12 +694,32 @@ func (d *Github) get(path string) (*Object, error) {
 		var arr []Object
 		if err = utils.Json.Unmarshal(res.Body(), &arr); err == nil {
 			p := utils.FixAndCleanPath(path)
-			return &Object{
+			o := &Object{
 				Type:    "dir",
 				Name:    stdpath.Base(p),
 				Path:    p,
 				Entries: arr,
-			}, nil
+			}
+			if p != "/" {
+				parent := utils.FixAndCleanPath(stdpath.Dir(p))
+				resP, errP := d.client.R().
+					SetHeader("Accept", "application/vnd.github+json").
+					SetQueryParam("ref", d.Ref).
+					Get(d.getContentApiUrl(parent))
+				if errP == nil && resP.StatusCode() == 200 {
+					var parr []Object
+					if utils.Json.Unmarshal(resP.Body(), &parr) == nil {
+						childName := stdpath.Base(p)
+						for i := range parr {
+							if parr[i].Name == childName && parr[i].Type == "dir" {
+								o.Sha = parr[i].Sha
+								break
+							}
+						}
+					}
+				}
+			}
+			return o, nil
 		}
 		return nil, err
 	}
@@ -720,12 +740,32 @@ func (d *Github) get(path string) (*Object, error) {
 	var arr []Object
 	if err = utils.Json.Unmarshal(res2.Body(), &arr); err == nil {
 		p := utils.FixAndCleanPath(path)
-		return &Object{
+			o := &Object{
 			Type:    "dir",
 			Name:    stdpath.Base(p),
 			Path:    p,
 			Entries: arr,
-		}, nil
+		}
+		if p != "/" {
+			parent := utils.FixAndCleanPath(stdpath.Dir(p))
+			resP, errP := d.client.R().
+				SetHeader("Accept", "application/vnd.github+json").
+				SetQueryParam("ref", d.Ref).
+				Get(d.getContentApiUrl(parent))
+			if errP == nil && resP.StatusCode() == 200 {
+				var parr []Object
+				if utils.Json.Unmarshal(resP.Body(), &parr) == nil {
+					childName := stdpath.Base(p)
+					for i := range parr {
+						if parr[i].Name == childName && parr[i].Type == "dir" {
+							o.Sha = parr[i].Sha
+							break
+						}
+					}
+				}
+			}
+		}
+		return o, nil
 	}
 	return nil, err
 }
