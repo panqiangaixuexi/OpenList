@@ -140,7 +140,7 @@ func (d *Github) List(ctx context.Context, dir model.Obj, args model.ListArgs) (
 	if obj.Entries == nil {
 		return nil, errs.NotFolder
 	}
-	if len(obj.Entries) >= 1000 {
+	if len(obj.Entries) >= 1000 && obj.Sha != "" {
 		tree, err := d.getTree(obj.Sha)
 		if err != nil {
 			return nil, err
@@ -681,16 +681,53 @@ func (d *Github) getContentApiUrl(path string) string {
 }
 
 func (d *Github) get(path string) (*Object, error) {
-	res, err := d.client.R().SetQueryParam("ref", d.Ref).Get(d.getContentApiUrl(path))
+	r := d.client.R().SetQueryParam("ref", d.Ref)
+	res, err := r.Get(d.getContentApiUrl(path))
 	if err != nil {
 		return nil, err
 	}
-	if res.StatusCode() != 200 {
-		return nil, toErr(res)
+	if res.StatusCode() == 200 {
+		var obj Object
+		if err = utils.Json.Unmarshal(res.Body(), &obj); err == nil {
+			return &obj, nil
+		}
+		var arr []Object
+		if err = utils.Json.Unmarshal(res.Body(), &arr); err == nil {
+			p := utils.FixAndCleanPath(path)
+			return &Object{
+				Type:    "dir",
+				Name:    stdpath.Base(p),
+				Path:    p,
+				Entries: arr,
+			}, nil
+		}
+		return nil, err
 	}
-	var resp Object
-	err = utils.Json.Unmarshal(res.Body(), &resp)
-	return &resp, err
+	res2, err := d.client.R().
+		SetHeader("Accept", "application/vnd.github+json").
+		SetQueryParam("ref", d.Ref).
+		Get(d.getContentApiUrl(path))
+	if err != nil {
+		return nil, err
+	}
+	if res2.StatusCode() != 200 {
+		return nil, toErr(res2)
+	}
+	var obj Object
+	if err = utils.Json.Unmarshal(res2.Body(), &obj); err == nil {
+		return &obj, nil
+	}
+	var arr []Object
+	if err = utils.Json.Unmarshal(res2.Body(), &arr); err == nil {
+		p := utils.FixAndCleanPath(path)
+		return &Object{
+			Type:    "dir",
+			Name:    stdpath.Base(p),
+			Path:    p,
+			Entries: arr,
+		}, nil
+	}
+	return nil, err
 }
 
 func (d *Github) putBlob(ctx context.Context, s model.FileStreamer, up driver.UpdateProgress) (string, error) {
@@ -982,4 +1019,3 @@ func (d *Github) addCommitterAndAuthor(m *map[string]interface{}) {
 		(*m)["author"] = author
 	}
 }
-
